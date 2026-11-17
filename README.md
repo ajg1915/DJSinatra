@@ -33,6 +33,16 @@ It's a website you can also **install as an app** (no app store needed), hosted 
 Every time you add MP3s to `tracks/`, the site rebuilds itself automatically.
 Inside the app, **☁ Publish to GitHub** takes you straight to that upload page.
 
+## ➕ Adding / removing songs
+**On this PC (easiest):** put songs in the `instrumenatls` folder (or delete them), then double-click
+**`Sync Songs.bat`** in that folder. It:
+- converts WAV / M4A / MP4 / FLAC / AAC / OGG / WMA to 320k MP3 (needs FFmpeg: `winget install Gyan.FFmpeg`)
+- adds new songs, asks before removing songs you deleted
+- pulls in anything you uploaded on the GitHub website (copied into your folder)
+- uploads to GitHub — website and TV app update in about a minute
+
+**From any device:** in the app tap **☁ Publish to GitHub** → drag in MP3s → *Commit changes*.
+
 ## 📺 Android app (APK) — Chromecast with Google TV, Android TV, Fire TV, phones
 GitHub builds the APK automatically (see `.github/workflows/android.yml`). Newest version, always:
 **https://github.com/ajg1915/DJSinatra/releases/latest/download/DJSinatra.apk**
