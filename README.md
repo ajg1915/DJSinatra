@@ -33,6 +33,21 @@ It's a website you can also **install as an app** (no app store needed), hosted 
 Every time you add MP3s to `tracks/`, the site rebuilds itself automatically.
 Inside the app, **☁ Publish to GitHub** takes you straight to that upload page.
 
+## 📺 Android app (APK) — Chromecast with Google TV, Android TV, Fire TV, phones
+GitHub builds the APK automatically (see `.github/workflows/android.yml`). Newest version, always:
+**https://github.com/ajg1915/DJSinatra/releases/latest/download/DJSinatra.apk**
+
+Install on a **Chromecast with Google TV** (or Google TV Streamer):
+1. Install **VLC** from the Google TV app store.
+2. Install the free **Downloader** app (by AFTVnews) from the store.
+3. Turn on developer mode: **Settings → System → About → Android TV OS build** — click it 7 times.
+4. **Settings → Apps → Security & restrictions → Unknown sources** → turn on **Downloader**.
+5. Open Downloader, type the APK link above, download, and tap **Install**.
+6. DJSinatra appears in your apps row. Pick a song → it plays in VLC.
+
+The app shows the live website, so new songs appear without reinstalling the APK.
+(The original puck-style Chromecasts without a remote can't install apps — use the website and *Cast* instead.)
+
 ## Each device, once
 Install the free **VLC** app: Google Play / Amazon (Fire TV) / App Store / videolan.org (PC & Mac).
 On a PC, the first time you open a `.m3u`, choose **VLC** and tick *Always use this app*.

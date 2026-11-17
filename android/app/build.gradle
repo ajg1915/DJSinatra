@@ -1,0 +1,36 @@
+plugins {
+    id 'com.android.application'
+}
+
+def buildNumber = Integer.parseInt(System.getenv('VERSION_CODE') ?: '1')
+
+android {
+    namespace 'io.github.ajg1915.djsinatra'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'io.github.ajg1915.djsinatra'
+        minSdk 21
+        targetSdk 34
+        versionCode buildNumber
+        versionName "1.0.${buildNumber}"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Personal sideloaded app: sign with the build machine's debug key.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
