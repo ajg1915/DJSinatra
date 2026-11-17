@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>DJSinatra</title>
+  <meta name="description" content="DJSinatra — instrumental MP3 player. Stream in VLC on TV, PC, tablet and phone.">
+  <meta name="theme-color" content="#0d0b14">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="DJSinatra">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="icons/icon.svg" alt="" width="44" height="44">
+      <div>
+        <h1>DJSinatra</h1>
+        <p class="tag">Instrumentals · MP3 only · Plays in VLC</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="installBtn" class="btn ghost" hidden>⬇ Install app</button>
+      <button id="settingsBtn" class="btn ghost" aria-haspopup="dialog">⚙ Settings</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="toolbar">
+      <input id="search" type="search" placeholder="Search instrumentals…" aria-label="Search">
+      <div class="toolbar-btns">
+        <button id="vlcAllBtn" class="btn primary" title="Download a playlist of every track that opens in VLC">▶ Play all in VLC</button>
+        <label class="btn" for="fileInput" tabindex="0" id="uploadLabel">⤒ Upload MP3s</label>
+        <input id="fileInput" type="file" accept=".mp3,audio/mpeg" multiple hidden>
+        <a id="publishLink" class="btn ghost" target="_blank" rel="noopener" hidden>☁ Publish to GitHub</a>
+      </div>
+    </section>
+
+    <div id="dropZone" class="drop" hidden>Drop MP3 files to add them</div>
+    <p id="status" class="status" role="status"></p>
+
+    <section>
+      <h2 id="libTitle">Library</h2>
+      <ul id="list" class="list"></ul>
+      <p id="empty" class="empty" hidden>No instrumentals yet. Upload some MP3s to get started.</p>
+    </section>
+  </main>
+
+  <footer class="player" id="player" hidden>
+    <div class="now">
+      <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span id="nowTitle">—</span>
+    </div>
+    <audio id="audio" controls preload="none"></audio>
+    <div class="player-btns">
+      <button id="prevBtn" class="btn small" aria-label="Previous">⏮</button>
+      <button id="nextBtn" class="btn small" aria-label="Next">⏭</button>
+      <button id="nowVlcBtn" class="btn small primary">Open in VLC</button>
+    </div>
+  </footer>
+
+  <dialog id="settings">
+    <form method="dialog">
+      <h2>Settings</h2>
+      <fieldset>
+        <legend>Default player</legend>
+        <label><input type="radio" name="player" value="vlc"> VLC (recommended)</label>
+        <label><input type="radio" name="player" value="builtin"> Built-in player</label>
+      </fieldset>
+      <div class="help">
+        <h3>How VLC works on each device</h3>
+        <ul>
+          <li><b>Phone / tablet (Android, iPhone, iPad):</b> install the free VLC app. Tapping a track opens it straight in VLC.</li>
+          <li><b>Android TV / Fire TV:</b> install VLC from the store, open this site in the TV browser, tap a track.</li>
+          <li><b>PC / Mac:</b> tapping a track downloads a small <code>.m3u</code> playlist — open it and VLC streams the song.</li>
+          <li><b>Any TV with VLC (Apple TV, smart TVs):</b> use <i>Copy link</i>, then in VLC choose <i>Network → Open Network Stream</i> and paste.</li>
+        </ul>
+        <p>Detected device: <b id="deviceName"></b></p>
+      </div>
+      <div class="dialog-btns"><button class="btn primary" value="close">Done</button></div>
+    </form>
+  </dialog>
+
+  <template id="rowTpl">
+    <li class="row">
+      <button class="play" aria-label="Play"><span class="num"></span><span class="title"></span><span class="meta"></span></button>
+      <div class="acts">
+        <button class="btn small vlc" title="Open in VLC">VLC</button>
+        <button class="btn small builtin" title="Play here">▶</button>
+        <a class="btn small dl" title="Download MP3" download>⬇</a>
+        <button class="btn small copy" title="Copy stream link for VLC">🔗</button>
+        <button class="btn small del" title="Remove from this device" hidden>✕</button>
+      </div>
+    </li>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

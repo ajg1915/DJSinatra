@@ -1,0 +1,55 @@
+# Publishes DJSinatra to GitHub Pages every time you push or upload MP3s.
+# It rebuilds tracks.json + playlist.m3u from whatever MP3s are in /tracks.
+name: Deploy DJSinatra
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build track list (MP3 only)
+        env:
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          mkdir -p tracks
+          # tracks.json -> [{ "file": "...", "size": 123 }]
+          find tracks -maxdepth 1 -type f -iname '*.mp3' -printf '%f\t%s\n' | sort -f \
+            | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {file: .[0], size: (.[1] | tonumber)})' \
+            > tracks.json
+          # playlist.m3u with full URLs so VLC on phones/TVs can stream everything
+          {
+            echo '#EXTM3U'
+            jq -r '.[].file' tracks.json | while IFS= read -r f; do
+              echo "#EXTINF:-1,${f%.*}"
+              echo "$BASE_URL/tracks/$(jq -rn --arg s "$f" '$s|@uri')"
+            done
+          } > playlist.m3u
+          echo "Found $(jq length tracks.json) MP3 files"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
