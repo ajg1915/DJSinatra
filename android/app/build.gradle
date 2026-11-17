@@ -16,11 +16,24 @@ android {
         versionName "1.0.${buildNumber}"
     }
 
+    signingConfigs {
+        // Permanent key (from the ANDROID_SIGNING GitHub secret) so in-app updates install over the old app.
+        release {
+            def store = System.getenv('SIGNING_STORE_FILE')
+            if (store) {
+                storeFile file(store)
+                storeType 'pkcs12'
+                storePassword System.getenv('SIGNING_PASSWORD')
+                keyAlias System.getenv('SIGNING_ALIAS')
+                keyPassword System.getenv('SIGNING_PASSWORD')
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
-            // Personal sideloaded app: sign with the build machine's debug key.
-            signingConfig signingConfigs.debug
+            signingConfig System.getenv('SIGNING_STORE_FILE') ? signingConfigs.release : signingConfigs.debug
         }
     }
 

@@ -45,7 +45,14 @@ Install on a **Chromecast with Google TV** (or Google TV Streamer):
 5. Open Downloader, type the APK link above, download, and tap **Install**.
 6. DJSinatra appears in your apps row. Pick a song → it plays in VLC.
 
-The app shows the live website, so new songs appear without reinstalling the APK.
+**Auto-updates — you never reinstall:**
+- **New songs:** the app loads the live website, so songs you add to `tracks/` show up on their own
+  (when you reopen the app, and every 5 minutes while it's open).
+- **New app versions:** on start-up the app checks GitHub Releases; if a newer APK exists it asks
+  *"Update available → Install"*. The first time, Android asks you to allow installs from DJSinatra.
+
+Every APK is signed with the permanent key in the `ANDROID_SIGNING` repo secret (kept outside this repo,
+in `DJSinatra-signing-key`). Don't lose it — a different key means updates can't install over the old app.
 (The original puck-style Chromecasts without a remote can't install apps — use the website and *Cast* instead.)
 
 ## Each device, once

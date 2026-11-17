@@ -28,11 +28,37 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Load signing key
+        env:
+          ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
+        run: |
+          if [ -z "$ANDROID_SIGNING" ]; then
+            echo "::error::Missing ANDROID_SIGNING secret. Add it in Settings > Secrets and variables > Actions (see README)."
+            exit 1
+          fi
+          pw="${ANDROID_SIGNING%%:*}"
+          echo "::add-mask::$pw"
+          printf '%s' "${ANDROID_SIGNING#*:}" | base64 -d > "$RUNNER_TEMP/release.p12"
+          alias=$(keytool -list -v -storetype pkcs12 -keystore "$RUNNER_TEMP/release.p12" -storepass "$pw" \
+                  | sed -n 's/^Alias name: //p' | head -n1)
+          [ -n "$alias" ] || { echo "::error::Could not read the signing key"; exit 1; }
+          echo "Signing with key alias: $alias"
+          {
+            echo "SIGNING_STORE_FILE=$RUNNER_TEMP/release.p12"
+            echo "SIGNING_PASSWORD=$pw"
+            echo "SIGNING_ALIAS=$alias"
+          } >> "$GITHUB_ENV"
+
       - name: Build APK
         working-directory: android
         env:
           VERSION_CODE: ${{ github.run_number }}
         run: gradle assembleRelease --no-daemon
+
+      - name: Check APK signature
+        run: |
+          "$ANDROID_HOME"/build-tools/$(ls "$ANDROID_HOME"/build-tools | sort -V | tail -n1)/apksigner \
+            verify --print-certs android/app/build/outputs/apk/release/app-release.apk | grep -i 'DN:'
 
       - name: Rename APK
         run: cp android/app/build/outputs/apk/release/app-release.apk DJSinatra.apk

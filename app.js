@@ -285,9 +285,12 @@ if (repo) {
   els.publish.hidden = false;
 }
 
-async function refresh() {
+async function refresh(onlyIfChanged = false) {
   const [pub, loc] = await Promise.all([loadPublished(), loadLocal()]);
-  tracks = [...loc, ...pub].sort((a, b) => a.title.localeCompare(b.title));
+  const next = [...loc, ...pub].sort((a, b) => a.title.localeCompare(b.title));
+  const key = list => list.map(t => t.id).join('|');
+  if (onlyIfChanged && (key(next) === key(tracks) || (!pub.length && tracks.some(t => !t.local)))) return;
+  tracks = next;
   render();
 }
 
@@ -339,3 +342,19 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 }
 
 refresh();
+
+/* ---------- auto-update the song list ----------
+ * New songs pushed to GitHub show up on their own: when you come back to the app,
+ * and every 5 minutes while it is open. No reinstall needed. */
+let lastRefresh = Date.now();
+async function autoRefresh() {
+  if (document.hidden || Date.now() - lastRefresh < 60000) return;
+  lastRefresh = Date.now();
+  const before = new Set(tracks.map(t => t.id));
+  await refresh(true);
+  const added = tracks.filter(t => !before.has(t.id)).length;
+  if (added) say(`🎵 ${added} new song${added > 1 ? 's' : ''} added!`, 8000);
+}
+document.addEventListener('visibilitychange', autoRefresh);
+addEventListener('focus', autoRefresh);
+setInterval(autoRefresh, 5 * 60000);

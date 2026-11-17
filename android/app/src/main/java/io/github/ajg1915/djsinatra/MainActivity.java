@@ -32,10 +32,12 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private ValueCallback<Uri[]> fileCallback;
+    private Updater updater;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        updater = new Updater(this);
         web = new WebView(this);
         web.setBackgroundColor(0xFF0D0B14);
         setContentView(web);
@@ -205,10 +207,12 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
+        updater.checkSoon();   // new APK on GitHub? offer to install it
     }
 
     @Override
     protected void onDestroy() {
+        updater.release();
         web.destroy();
         super.onDestroy();
     }
