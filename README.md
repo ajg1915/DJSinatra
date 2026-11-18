@@ -41,6 +41,11 @@ Inside the app, **☁ Publish to GitHub** takes you straight to that upload page
 - pulls in anything you uploaded on the GitHub website (copied into your folder)
 - uploads to GitHub — website and TV app update in about a minute
 
+**Fully automatic:** double-click **`Turn On Auto Sync.bat`** once. From then on, whenever you add or
+delete songs in the folder, they upload by themselves about a minute later (a pop-up says when).
+It restarts every time you sign in to Windows. `Turn Off Auto Sync.bat` stops it.
+Log: `%LOCALAPPDATA%\DJSinatra\auto-sync.log`.
+
 **From any device:** in the app tap **☁ Publish to GitHub** → drag in MP3s → *Commit changes*.
 
 ## 📺 Android app (APK) — Chromecast with Google TV, Android TV, Fire TV, phones
