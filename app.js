@@ -161,13 +161,23 @@ function render() {
   current = view.findIndex(t => t.id === playingId);
   els.list.textContent = '';
   const frag = document.createDocumentFragment();
+  let dividerDone = false;
   view.forEach((t, i) => {
+    if (t.local && !dividerDone) {
+      dividerDone = true;
+      const d = document.createElement('li');
+      d.className = 'divider';
+      d.innerHTML = '<b>📱 Only on this device</b><span>Uploaded with “Upload MP3s” in this browser — your TV and other devices can’t see these. ' +
+        (els.publish.href ? 'Use ☁ Publish to GitHub (or add them to your songs folder on the PC) to share them everywhere.' : '') + '</span>';
+      frag.appendChild(d);
+    }
     const li = els.tpl.content.firstElementChild.cloneNode(true);
     li.dataset.id = t.id;
     $('.num', li).textContent = i + 1;
     $('.title', li).textContent = t.title;
     $('.title', li).title = t.file;
-    $('.meta', li).textContent = [t.local ? 'On this device' : 'MP3', fmtSize(t.size)].filter(Boolean).join(' · ');
+    $('.meta', li).textContent = [t.local ? '📱 Only on this device' : 'MP3', fmtSize(t.size)].filter(Boolean).join(' · ');
+    if (t.local) li.classList.add('local');
     $('.play', li).onclick = () => (defaultPlayer === 'vlc' ? openInVLC(t) : playBuiltin(i));
     $('.vlc', li).onclick = () => openInVLC(t);
     $('.builtin', li).onclick = () => playBuiltin(i);
@@ -181,7 +191,9 @@ function render() {
   });
   els.list.appendChild(frag);
   els.empty.hidden = view.length > 0;
-  els.libTitle.textContent = `Library · ${view.length} track${view.length === 1 ? '' : 's'}`;
+  const nPub = view.filter(t => !t.local).length, nLoc = view.length - nPub;
+  els.libTitle.textContent = `Library · ${nPub} song${nPub === 1 ? '' : 's'}` +
+    (nLoc ? ` · +${nLoc} only on this device` : '');
   markPlaying();
 }
 function saveBlob(u, name) {
@@ -286,8 +298,14 @@ if (repo) {
 }
 
 async function refresh(onlyIfChanged = false) {
-  const [pub, loc] = await Promise.all([loadPublished(), loadLocal()]);
-  const next = [...loc, ...pub].sort((a, b) => a.title.localeCompare(b.title));
+  const [pub, allLoc] = await Promise.all([loadPublished(), loadLocal()]);
+  // A song uploaded on this device that is now published on GitHub: drop the private copy
+  // so it isn't listed (or counted) twice, and free the space it used.
+  const pubNames = new Set(pub.map(t => t.file.toLowerCase()));
+  const loc = pub.length ? allLoc.filter(t => !pubNames.has(t.file.toLowerCase())) : allLoc;
+  if (pub.length) allLoc.filter(t => pubNames.has(t.file.toLowerCase())).forEach(t => DB.del(t.id).catch(() => {}));
+  const byTitle = (a, b) => a.title.localeCompare(b.title);
+  const next = [...pub.sort(byTitle), ...loc.sort(byTitle)];   // device-only songs listed last
   const key = list => list.map(t => t.id).join('|');
   if (onlyIfChanged && (key(next) === key(tracks) || (!pub.length && tracks.some(t => !t.local)))) return;
   tracks = next;
