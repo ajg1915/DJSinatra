@@ -40,6 +40,7 @@ function prettify(file) {
     .replace(/^\d+_/, '')
     .replace(/_/g, ' ')
     .replace(/\b(64|96|128|160|192|256|320)k\b/gi, '')
+    .replace(/\b(144|240|360|480|720|1080)p\b/gi, '')
     .replace(/inst-gabox-fv\d+/gi, '')
     .replace(/\(\s*\)/g, '')
     .replace(/\s*\(\d\)\s*$/, '')
