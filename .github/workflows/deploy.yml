@@ -31,28 +31,34 @@ jobs:
       - id: pages
         uses: actions/configure-pages@v5
 
-      - name: Build track list (MP3 only)
+      - name: Build site + track list (MP3 only)
         env:
-          BASE_URL: ${{ steps.pages.outputs.base_url }}
+          # Songs are NOT copied into the website (GitHub Pages sites max out at 1 GB).
+          # They stream straight from the repo instead.
+          MEDIA_BASE: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/tracks
         run: |
-          mkdir -p tracks
+          mkdir -p tracks _site
+          # the app itself (small): everything except songs, Android code, tools and repo files
+          cp index.html app.js style.css sw.js manifest.webmanifest _site/
+          cp -r icons _site/
           # tracks.json -> [{ "file": "...", "size": 123 }]
           find tracks -maxdepth 1 -type f -iname '*.mp3' -printf '%f\t%s\n' | sort -f \
             | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {file: .[0], size: (.[1] | tonumber)})' \
-            > tracks.json
+            > _site/tracks.json
           # playlist.m3u with full URLs so VLC on phones/TVs can stream everything
           {
             echo '#EXTM3U'
-            jq -r '.[].file' tracks.json | while IFS= read -r f; do
+            jq -r '.[].file' _site/tracks.json | while IFS= read -r f; do
               echo "#EXTINF:-1,${f%.*}"
-              echo "$BASE_URL/tracks/$(jq -rn --arg s "$f" '$s|@uri')"
+              echo "$MEDIA_BASE/$(jq -rn --arg s "$f" '$s|@uri')"
             done
-          } > playlist.m3u
-          echo "Found $(jq length tracks.json) MP3 files"
+          } > _site/playlist.m3u
+          echo "Found $(jq length _site/tracks.json) MP3 files"
+          du -sh _site
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
 
       - id: deployment
         uses: actions/deploy-pages@v4

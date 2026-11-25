@@ -47,7 +47,13 @@ function prettify(file) {
     .trim();
 }
 const fmtSize = b => b ? (b / 1048576).toFixed(1) + ' MB' : '';
-const absUrl = file => new URL('tracks/' + encodeURIComponent(file), location.href).href;
+/* Where the MP3s live. On GitHub Pages they stream straight from the repo (Pages sites are
+ * capped at 1 GB, so songs aren't copied into the site); locally they're served from tracks/. */
+function mediaBase() {
+  const repo = githubRepo();
+  return repo ? `https://raw.githubusercontent.com/${repo}/main/tracks/` : new URL('tracks/', location.href).href;
+}
+const absUrl = file => mediaBase() + encodeURIComponent(file);
 let statusTimer;
 function say(msg, ms = 6000) {
   els.status.textContent = msg;
