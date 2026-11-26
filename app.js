@@ -290,6 +290,12 @@ function openCatDialog(renaming = null) {
   els.catDialog.showModal();
   els.catName.select();
 }
+// Enter / the on-screen keyboard's "Done" saves (otherwise the form's first button, Cancel, would win).
+els.catName.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  if (els.catName.value.trim()) els.catDialog.close('ok');
+});
 els.catDialog.addEventListener('close', () => {
   if (els.catDialog.returnValue !== 'ok') return;
   const name = els.catName.value.trim().replace(/\s+/g, ' ');
@@ -316,13 +322,20 @@ function renderTagList() {
     const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'No categories yet — type a name below to create one.';
     els.tagList.append(p);
   }
+  // Toggle buttons (not checkboxes): a TV remote's OK button sends Enter, which can't tick a checkbox.
   cats.names.forEach(n => {
-    const label = document.createElement('label');
-    const box = document.createElement('input');
-    box.type = 'checkbox'; box.value = n; box.checked = mine.includes(n);
-    box.onchange = () => setSongCat(tagTrack, n, box.checked);
-    label.append(box, ' ', n);
-    els.tagList.append(label);
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tag-opt'; b.dataset.cat = n;
+    const tick = document.createElement('span'); tick.className = 'tick'; tick.setAttribute('aria-hidden', 'true');
+    b.append(tick, n);
+    const show = on => { b.setAttribute('aria-pressed', String(on)); tick.textContent = on ? '✓' : ''; };
+    show(mine.includes(n));
+    b.onclick = () => {
+      const on = b.getAttribute('aria-pressed') !== 'true';
+      setSongCat(tagTrack, n, on);
+      show(on);
+    };
+    els.tagList.append(b);
   });
 }
 function openTagDialog(t) {
@@ -331,6 +344,7 @@ function openTagDialog(t) {
   els.tagNew.value = '';
   renderTagList();
   els.tagDialog.showModal();
+  (els.tagList.querySelector('button') || els.tagNew).focus();
 }
 function addTagFromInput() {
   const name = addCat(els.tagNew.value);
@@ -462,7 +476,21 @@ async function refresh(onlyIfChanged = false) {
 
 /* ---------- TV remote / keyboard (D-pad) navigation ---------- */
 addEventListener('keydown', e => {
-  if (document.querySelector('dialog[open]')) return;
+  const dlg = document.querySelector('dialog[open]');
+  if (dlg) {
+    // Remote / arrow keys move through everything in the open pop-up (top to bottom).
+    const inText = document.activeElement?.tagName === 'INPUT' && document.activeElement.type === 'text';
+    const vertical = e.key === 'ArrowDown' || e.key === 'ArrowUp';
+    const horizontal = !inText && (e.key === 'ArrowRight' || e.key === 'ArrowLeft');
+    if (!vertical && !horizontal) return;
+    const items = [...dlg.querySelectorAll('button, input, a[href]')].filter(x => !x.hidden && x.offsetParent !== null);
+    const i = items.indexOf(document.activeElement);
+    const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1;
+    const next = items[i < 0 ? 0 : Math.max(0, Math.min(items.length - 1, i + step))];
+    if (next) { next.focus(); next.scrollIntoView?.({ block: 'nearest' }); }
+    e.preventDefault();
+    return;
+  }
   const row = document.activeElement?.closest?.('.row');
   const inCats = !!document.activeElement?.closest?.('#cats');
   const inPlayer = !!document.activeElement?.closest?.('#player');

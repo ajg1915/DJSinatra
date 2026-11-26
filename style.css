@@ -74,9 +74,18 @@ h2 { font-size: 1.1em; color: var(--muted); font-weight: 600; margin: 20px 0 8px
 .hint { color: var(--muted); font-size: .9em; margin: 8px 0; }
 #tagSong { color: var(--text); font-weight: 600; }
 .tag-list { display: grid; gap: 2px; max-height: 50vh; overflow: auto; margin: 8px 0 12px; }
-.tag-list label { display: flex; align-items: center; gap: .6em; padding: 8px 6px; border-radius: 8px; cursor: pointer; }
-.tag-list label:hover { background: var(--panel-2); }
-.tag-list input { width: 1.2em; height: 1.2em; accent-color: var(--gold); }
+.tag-opt {
+  display: flex; align-items: center; gap: .7em; width: 100%; padding: 10px 10px; text-align: left;
+  border-radius: 10px; border: 1px solid transparent; background: none; color: var(--text);
+  font: inherit; cursor: pointer;
+}
+.tag-opt:hover { background: var(--panel-2); }
+.tag-opt .tick {
+  display: inline-grid; place-items: center; width: 1.4em; height: 1.4em; flex: none;
+  border: 2px solid var(--muted); border-radius: 6px; font-weight: 800; font-size: .9em;
+}
+.tag-opt[aria-pressed="true"] { border-color: var(--gold); }
+.tag-opt[aria-pressed="true"] .tick { background: var(--gold); border-color: var(--gold); color: #1a1200; }
 .new-cat { display: flex; gap: 8px; }
 .new-cat .field { flex: 1; min-width: 0; }
 .dialog-btns .btn + .btn { margin-left: 8px; }
