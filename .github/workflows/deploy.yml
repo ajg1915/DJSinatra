@@ -27,6 +27,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history, to know when each song was added
 
       - id: pages
         uses: actions/configure-pages@v5
@@ -41,9 +43,17 @@ jobs:
           # the app itself (small): everything except songs, Android code, tools and repo files
           cp index.html app.js style.css sw.js manifest.webmanifest _site/
           cp -r icons _site/
-          # tracks.json -> [{ "file": "...", "size": 123 }]
-          find tracks -maxdepth 1 -type f -iname '*.mp3' -printf '%f\t%s\n' | sort -f \
-            | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {file: .[0], size: (.[1] | tonumber)})' \
+          # when each song was (most recently) added = date of the commit that added it (newest first in git log)
+          ADDED="$RUNNER_TEMP/added.tsv"
+          git -c core.quotepath=off log --diff-filter=A --format='@%ct' --name-only -- tracks \
+            | awk '/^@/ { t = substr($0, 2); next } NF { f = $0; sub(/^tracks\//, "", f); if (!(f in seen)) { seen[f] = 1; print f "\t" t } }' \
+            > "$ADDED"
+          # tracks.json -> [{ "file": "...", "size": 123, "added": <unix seconds> }]
+          find tracks -maxdepth 1 -type f -iname '*.mp3' -printf '%f\t%s\t%T@\n' | sort -f \
+            | jq -R -s --rawfile added "$ADDED" '
+                ($added | split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: (.[1] | tonumber)}) | from_entries) as $a
+                | split("\n") | map(select(length > 0) | split("\t")
+                | {file: .[0], size: (.[1] | tonumber), added: ($a[.[0]] // (.[2] | tonumber | floor))})' \
             > _site/tracks.json
           # playlist.m3u with full URLs so VLC on phones/TVs can stream everything
           {

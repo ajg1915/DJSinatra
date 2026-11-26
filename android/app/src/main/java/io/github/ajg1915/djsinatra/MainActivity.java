@@ -21,13 +21,12 @@ import android.widget.Toast;
 
 /**
  * DJSinatra for Android / Android TV / Chromecast with Google TV.
- * Shows the DJSinatra website full screen and hands songs to the VLC app.
+ * Shows the DJSinatra website full screen; songs play in the app's own player.
  */
 public class MainActivity extends Activity {
 
     private static final String HOME = "https://ajg1915.github.io/DJSinatra/";
     private static final String HOME_HOST = "ajg1915.github.io";
-    private static final String VLC = "org.videolan.vlc";
     private static final int PICK_FILES = 42;
 
     private WebView web;
@@ -107,12 +106,12 @@ public class MainActivity extends Activity {
         web.requestFocus(View.FOCUS_DOWN);
     }
 
-    /** Returns true when we handled the link ourselves (VLC, Play Store, other apps). */
+    /** Returns true when we handled the link ourselves (other apps, Play Store, outside sites). */
     private boolean handleUrl(String url) {
         Uri uri = Uri.parse(url);
         String scheme = uri.getScheme() == null ? "" : uri.getScheme();
 
-        if (scheme.equals("intent")) {           // "Open in VLC" links from the website
+        if (scheme.equals("intent")) {           // intent:// links open the matching Android app
             try {
                 Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
                 intent.setComponent(null);
@@ -120,18 +119,11 @@ public class MainActivity extends Activity {
                 try {
                     startActivity(intent);
                 } catch (ActivityNotFoundException e) {
-                    // VLC missing: try any audio player, then send them to the store for VLC
-                    intent.setPackage(null);
-                    try {
-                        startActivity(intent);
-                        toast("Install VLC for the best playback");
-                    } catch (ActivityNotFoundException e2) {
-                        toast("Install VLC to play songs");
-                        openStore(intent.getPackage() != null ? intent.getPackage() : VLC);
-                    }
+                    if (intent.getPackage() != null) openStore(intent.getPackage());
+                    else toast("No app on this device can open that");
                 }
             } catch (Exception e) {
-                toast("Couldn't open VLC");
+                toast("Couldn't open that link");
             }
             return true;
         }
@@ -184,11 +176,35 @@ public class MainActivity extends Activity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_BACK && web.canGoBack()) {
-            web.goBack();
-            return true;
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BACK:
+                // Back first closes an open dialog or stops the player; only then leaves the page/app.
+                web.evaluateJavascript("(window.djsBack && window.djsBack()) ? 'yes' : 'no'", handled -> {
+                    if (handled != null && handled.contains("yes")) return;
+                    if (web.canGoBack()) web.goBack();
+                    else finish();
+                });
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_STOP:
+                return media("stop");
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                return media("toggle");
+            case KeyEvent.KEYCODE_MEDIA_NEXT:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                return media("next");
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+                return media("prev");
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    /** Sends a remote-control media key to the web player. */
+    private boolean media(String key) {
+        web.evaluateJavascript("window.djsMedia && window.djsMedia('" + key + "')", null);
+        return true;
     }
 
     @Override

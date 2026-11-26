@@ -10,15 +10,6 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
-    <!-- Lets the app check whether VLC is installed (Android 11+) -->
-    <queries>
-        <package android:name="org.videolan.vlc" />
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:mimeType="audio/*" />
-        </intent>
-    </queries>
-
     <application
         android:label="DJSinatra"
         android:icon="@drawable/icon"

@@ -1,17 +1,14 @@
 # 🎙️ DJSinatra
 
-Instrumental MP3 player that plays in **VLC** on every device — TV, PC, tablet and phone.
+Instrumental MP3 player for every device — TV, PC, tablet and phone. Songs play right in the app.
 It's a website you can also **install as an app** (no app store needed), hosted free on GitHub Pages.
 
 ## What it does
-- 🎵 Library of instrumentals — **MP3 only** (anything else is rejected)
-- 🟠 **VLC is the default player**
-  - Android phone / tablet / Android TV / Fire TV → opens straight in the VLC app
-  - iPhone / iPad → opens in *VLC for Mobile*
-  - Windows / Mac → downloads a tiny `.m3u` playlist that opens in VLC
-  - Any TV running VLC → 🔗 *Copy link* → VLC → *Open Network Stream*
-  - **Play all in VLC** sends the whole library as one playlist
-- ▶ Built-in player as a backup (switch in ⚙ Settings)
+- 🎵 Library of instrumentals — **MP3 only** (anything else is rejected), newest songs first
+- 🏷 Categories — make your own (Christmas, Ballads…) and tag songs; saved on each device
+- ▶ Built-in player with ⏮ ⏯ ⏭ and **■ Stop** (closes the player)
+  - TV remote: **Back** stops and closes the player; play/pause, next, previous and stop keys work too
+  - **▶ Play all** plays the current list (or category) from the top
 - ⬇ Download any MP3
 - ⤒ Upload MP3s from any device (saved on that device), or **Publish to GitHub** so every device gets them
 - 📲 *Install app* button (Android, Chrome/Edge on PC; on iPhone: Share → Add to Home Screen)
@@ -53,12 +50,11 @@ GitHub builds the APK automatically (see `.github/workflows/android.yml`). Newes
 **https://github.com/ajg1915/DJSinatra/releases/latest/download/DJSinatra.apk**
 
 Install on a **Chromecast with Google TV** (or Google TV Streamer):
-1. Install **VLC** from the Google TV app store.
-2. Install the free **Downloader** app (by AFTVnews) from the store.
-3. Turn on developer mode: **Settings → System → About → Android TV OS build** — click it 7 times.
-4. **Settings → Apps → Security & restrictions → Unknown sources** → turn on **Downloader**.
-5. Open Downloader, type the APK link above, download, and tap **Install**.
-6. DJSinatra appears in your apps row. Pick a song → it plays in VLC.
+1. Install the free **Downloader** app (by AFTVnews) from the store.
+2. Turn on developer mode: **Settings → System → About → Android TV OS build** — click it 7 times.
+3. **Settings → Apps → Security & restrictions → Unknown sources** → turn on **Downloader**.
+4. Open Downloader, type the APK link above, download, and tap **Install**.
+5. DJSinatra appears in your apps row. Pick a song → it plays in the app. Press **Back** on the remote to stop it.
 
 **Auto-updates — you never reinstall:**
 - **New songs:** the app loads the live website, so songs you add to `tracks/` show up on their own
@@ -69,10 +65,6 @@ Install on a **Chromecast with Google TV** (or Google TV Streamer):
 Every APK is signed with the permanent key in the `ANDROID_SIGNING` repo secret (kept outside this repo,
 in `DJSinatra-signing-key`). Don't lose it — a different key means updates can't install over the old app.
 (The original puck-style Chromecasts without a remote can't install apps — use the website and *Cast* instead.)
-
-## Each device, once
-Install the free **VLC** app: Google Play / Amazon (Fire TV) / App Store / videolan.org (PC & Mac).
-On a PC, the first time you open a `.m3u`, choose **VLC** and tick *Always use this app*.
 
 ## Test it on this PC
 ```powershell

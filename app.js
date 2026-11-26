@@ -1,4 +1,4 @@
-/* DJSinatra — instrumental MP3 player that hands playback to VLC.
+/* DJSinatra — instrumental MP3 player.
  * Static site: works on GitHub Pages, any phone, tablet, PC or TV browser. */
 'use strict';
 
@@ -11,16 +11,13 @@ const els = {
   list: $('#list'), tpl: $('#rowTpl'), search: $('#search'), status: $('#status'), empty: $('#empty'),
   player: $('#player'), audio: $('#audio'), nowTitle: $('#nowTitle'), libTitle: $('#libTitle'),
   fileInput: $('#fileInput'), drop: $('#dropZone'), publish: $('#publishLink'),
-  settings: $('#settings'), install: $('#installBtn'),
+  install: $('#installBtn'), cats: $('#cats'), playPause: $('#playPauseBtn'),
+  catDialog: $('#catDialog'), catName: $('#catName'), tagDialog: $('#tagDialog'), tagList: $('#tagList'),
+  tagNew: $('#tagNew'),
 };
 
 /* ---------- device detection ---------- */
-const ua = navigator.userAgent;
-const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const isAndroid = /Android/i.test(ua);
-const isTV = /\b(TV|AFT\w*|BRAVIA|SMART-TV|SmartTV|Tizen|Web0S|webOS|CrKey|GoogleTV)\b/i.test(ua);
-const device = isIOS ? 'ios' : isAndroid ? 'android' : 'desktop';
-$('#deviceName').textContent = isIOS ? 'iPhone / iPad' : isAndroid ? (isTV ? 'Android TV / Fire TV' : 'Android') : isTV ? 'Smart TV' : 'Computer';
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 /* ---------- state ---------- */
 let tracks = [];      // {id, file, title, size, url, local, blob?}
@@ -30,7 +27,57 @@ const store = {
   get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
 };
-let defaultPlayer = store.get('djs.player', 'vlc');
+
+/* ---------- categories (saved on this device) ----------
+ * { names: ["Christmas", ...], songs: { "<file name, lower-case>": ["Christmas", ...] } } */
+const cats = (() => {
+  let d = null;
+  try { d = JSON.parse(store.get('djs.cats', 'null')); } catch {}
+  if (!d || !Array.isArray(d.names) || typeof d.songs !== 'object' || !d.songs) d = { names: [], songs: {} };
+  return d;
+})();
+let activeCat = cats.names.includes(store.get('djs.cat', '')) ? store.get('djs.cat', '') : '';
+const saveCats = () => store.set('djs.cats', JSON.stringify(cats));
+const catKey = t => t.file.toLowerCase();
+const catsOf = t => (cats.songs[catKey(t)] || []).filter(c => cats.names.includes(c));
+const findCat = name => cats.names.find(n => n.toLowerCase() === name.toLowerCase());
+function addCat(name) {
+  name = name.trim().replace(/\s+/g, ' ');
+  if (!name) return null;
+  const existing = findCat(name);
+  if (existing) return existing;
+  cats.names.push(name);
+  cats.names.sort((a, b) => a.localeCompare(b));
+  saveCats();
+  return name;
+}
+function setSongCat(t, name, on) {
+  const k = catKey(t);
+  const list = new Set(cats.songs[k] || []);
+  on ? list.add(name) : list.delete(name);
+  if (list.size) cats.songs[k] = [...list]; else delete cats.songs[k];
+  saveCats();
+}
+function renameCat(from, to) {
+  cats.names = cats.names.map(n => (n === from ? to : n)).sort((a, b) => a.localeCompare(b));
+  for (const k in cats.songs) cats.songs[k] = cats.songs[k].map(n => (n === from ? to : n));
+  if (activeCat === from) setActiveCat(to, false);
+  saveCats();
+}
+function deleteCat(name) {
+  cats.names = cats.names.filter(n => n !== name);
+  for (const k in cats.songs) {
+    cats.songs[k] = cats.songs[k].filter(n => n !== name);
+    if (!cats.songs[k].length) delete cats.songs[k];
+  }
+  if (activeCat === name) setActiveCat('', false);
+  saveCats();
+}
+function setActiveCat(name, doRender = true) {
+  activeCat = name;
+  store.set('djs.cat', name);
+  if (doRender) render();
+}
 
 /* ---------- helpers ---------- */
 function prettify(file) {
@@ -48,6 +95,8 @@ function prettify(file) {
     .trim();
 }
 const fmtSize = b => b ? (b / 1048576).toFixed(1) + ' MB' : '';
+const fmtDate = ms => ms ? 'Added ' + new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+const newestFirst = (a, b) => (b.added || 0) - (a.added || 0) || a.title.localeCompare(b.title);
 /* Where the MP3s live. On GitHub Pages they stream straight from the repo (Pages sites are
  * capped at 1 GB, so songs aren't copied into the site); locally they're served from tracks/. */
 function mediaBase() {
@@ -61,72 +110,8 @@ function say(msg, ms = 6000) {
   clearTimeout(statusTimer);
   if (ms) statusTimer = setTimeout(() => (els.status.textContent = ''), ms);
 }
-function m3u(list) {
-  return '#EXTM3U\n' + list.map(t => `#EXTINF:-1,${t.title}\n${t.url}`).join('\n') + '\n';
-}
-function saveFile(name, text, type) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type }));
-  a.download = name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-}
-const safeName = s => s.replace(/[\\/:*?"<>|]+/g, '').slice(0, 80) || 'DJSinatra';
-
-/* ---------- VLC hand-off ---------- */
-function vlcLink(url, type = 'audio/mpeg') {
-  if (device === 'android') {
-    const u = new URL(url);
-    return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=${u.protocol.replace(':', '')};` +
-           `type=${type};package=org.videolan.vlc;end`;
-  }
-  if (device === 'ios') return 'vlc-x-callback://x-callback-url/stream?url=' + encodeURIComponent(url);
-  return null; // desktop: use a playlist file instead
-}
-function launch(link) {
-  let left = false;
-  const onHide = () => { left = true; };
-  document.addEventListener('visibilitychange', onHide, { once: true });
-  window.addEventListener('blur', onHide, { once: true });
-  location.href = link;
-  if (device === 'ios') {
-    setTimeout(() => {
-      if (!left) say('VLC did not open — install the free "VLC for Mobile" app from the App Store, then try again.', 12000);
-    }, 1800);
-  }
-}
-function openInVLC(t) {
-  if (t.local) {
-    say('Tracks uploaded on this device can only play in the built-in player. Publish them to GitHub to stream in VLC everywhere.');
-    return playBuiltin(view.indexOf(t));
-  }
-  const link = vlcLink(t.url);
-  if (link) { say(`Opening “${t.title}” in VLC…`); return launch(link); }
-  saveFile(safeName(t.title) + '.m3u', m3u([t]), 'audio/x-mpegurl');
-  say('Playlist downloaded — open it and it plays in VLC (set VLC as the default for .m3u files once).', 9000);
-}
-function playAllInVLC() {
-  const list = view.filter(t => !t.local);
-  if (!list.length) return say('Nothing to send to VLC yet.');
-  if (device === 'desktop') {
-    saveFile('DJSinatra.m3u', m3u(list), 'audio/x-mpegurl');
-    return say(`Playlist with ${list.length} tracks downloaded — open it in VLC.`, 9000);
-  }
-  // Phones / TVs: stream the published playlist file (built by the GitHub workflow).
-  const playlistUrl = new URL('playlist.m3u', location.href).href;
-  fetch(playlistUrl, { method: 'HEAD' }).then(r => {
-    if (r.ok) launch(vlcLink(playlistUrl, 'audio/x-mpegurl'));
-    else openInVLC(list[0]);
-  }).catch(() => openInVLC(list[0]));
-}
-async function copyLink(t) {
-  if (t.local) return say('This track only lives on this device — publish it to GitHub to get a link.');
-  try { await navigator.clipboard.writeText(t.url); say('Link copied. In VLC: Media/Network → Open Network Stream → paste.'); }
-  catch { prompt('Copy this link into VLC → Open Network Stream:', t.url); }
-}
-
-/* ---------- built-in player ---------- */
-function playBuiltin(i) {
+/* ---------- player ---------- */
+function playTrack(i) {
   const t = view[i];
   if (!t) return;
   current = i;
@@ -145,26 +130,81 @@ function playBuiltin(i) {
     });
   }
 }
+/* Stop playback completely and hide the player bar. */
+function stopPlayer() {
+  if (els.player.hidden) return false;
+  const focusWasInPlayer = els.player.contains(document.activeElement);
+  els.audio.pause();
+  if (els.audio.dataset.url && els.audio.dataset.url.startsWith('blob:')) URL.revokeObjectURL(els.audio.dataset.url);
+  els.audio.removeAttribute('src');
+  delete els.audio.dataset.url;
+  els.audio.load();
+  els.player.hidden = true;
+  const playingRow = els.list.querySelector('.row.playing');
+  current = -1;
+  markPlaying();
+  if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
+  if (focusWasInPlayer) ($('.play', playingRow || els.list) || els.search).focus();
+  say('Player stopped.', 3000);
+  return true;
+}
+/* Android TV app: the remote's Back button calls this first. true = handled (player closed). */
+window.djsBack = () => {
+  if (document.querySelector('dialog[open]')) { document.querySelector('dialog[open]').close(); return true; }
+  return stopPlayer();
+};
+function togglePlay() {
+  if (els.player.hidden) return;
+  els.audio.paused ? els.audio.play().catch(() => {}) : els.audio.pause();
+}
+/* Called by the Android TV app for the remote's media keys. */
+window.djsMedia = key => {
+  if (key === 'stop') stopPlayer();
+  else if (key === 'toggle') togglePlay();
+  else if (key === 'next' && !els.player.hidden) $('#nextBtn').click();
+  else if (key === 'prev' && !els.player.hidden) $('#prevBtn').click();
+};
 function markPlaying() {
   const id = view[current]?.id;
   els.list.querySelectorAll('.row').forEach(r => r.classList.toggle('playing', r.dataset.id === id));
 }
-els.audio.addEventListener('ended', () => playBuiltin(current + 1 < view.length ? current + 1 : 0));
-els.audio.addEventListener('play', () => els.player.classList.add('on'));
-els.audio.addEventListener('pause', () => els.player.classList.remove('on'));
-$('#nextBtn').onclick = () => playBuiltin((current + 1) % view.length);
-$('#prevBtn').onclick = () => playBuiltin((current - 1 + view.length) % view.length);
-$('#nowVlcBtn').onclick = () => { if (view[current]) { els.audio.pause(); openInVLC(view[current]); } };
+function playAll() {
+  if (!view.length) return say('No songs to play yet.');
+  playTrack(0);
+  els.playPause.focus();
+}
+els.audio.addEventListener('ended', () => playTrack(current + 1 < view.length ? current + 1 : 0));
+els.audio.addEventListener('play', () => { els.player.classList.add('on'); els.playPause.textContent = '⏸'; els.playPause.setAttribute('aria-label', 'Pause'); });
+els.audio.addEventListener('pause', () => { els.player.classList.remove('on'); els.playPause.textContent = '▶'; els.playPause.setAttribute('aria-label', 'Play'); });
+$('#nextBtn').onclick = () => playTrack((current + 1) % view.length);
+$('#prevBtn').onclick = () => playTrack((current - 1 + view.length) % view.length);
+els.playPause.onclick = togglePlay;
+$('#stopBtn').onclick = stopPlayer;
+const fmtTime = s => !isFinite(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+els.audio.addEventListener('timeupdate', () => {
+  const { currentTime: t, duration: d } = els.audio;
+  $('#timeNow').textContent = fmtTime(t);
+  $('#timeTotal').textContent = fmtTime(d);
+  $('#seekFill').style.width = d ? (t / d * 100) + '%' : '0';
+});
+$('#seek').addEventListener('click', e => {
+  const r = e.currentTarget.getBoundingClientRect();
+  if (els.audio.duration) els.audio.currentTime = (e.clientX - r.left) / r.width * els.audio.duration;
+});
 if ('mediaSession' in navigator) {
   navigator.mediaSession.setActionHandler('nexttrack', () => $('#nextBtn').click());
   navigator.mediaSession.setActionHandler('previoustrack', () => $('#prevBtn').click());
+  try { navigator.mediaSession.setActionHandler('stop', stopPlayer); } catch {}
 }
 
 /* ---------- rendering ---------- */
 function render() {
   const q = els.search.value.trim().toLowerCase();
   const playingId = view[current]?.id;
-  view = tracks.filter(t => !q || t.title.toLowerCase().includes(q) || t.file.toLowerCase().includes(q));
+  renderCats();
+  view = tracks.filter(t =>
+    (!q || t.title.toLowerCase().includes(q) || t.file.toLowerCase().includes(q)) &&
+    (!activeCat || catsOf(t).includes(activeCat)));
   current = view.findIndex(t => t.id === playingId);
   els.list.textContent = '';
   const frag = document.createDocumentFragment();
@@ -183,12 +223,13 @@ function render() {
     $('.num', li).textContent = i + 1;
     $('.title', li).textContent = t.title;
     $('.title', li).title = t.file;
-    $('.meta', li).textContent = [t.local ? '📱 Only on this device' : 'MP3', fmtSize(t.size)].filter(Boolean).join(' · ');
+    const tc = catsOf(t);
+    $('.meta', li).textContent = [t.local ? '📱 Only on this device' : 'MP3', fmtSize(t.size), fmtDate(t.added),
+      tc.length ? '🏷 ' + tc.join(', ') : ''].filter(Boolean).join(' · ');
     if (t.local) li.classList.add('local');
-    $('.play', li).onclick = () => (defaultPlayer === 'vlc' ? openInVLC(t) : playBuiltin(i));
-    $('.vlc', li).onclick = () => openInVLC(t);
-    $('.builtin', li).onclick = () => playBuiltin(i);
-    $('.copy', li).onclick = () => copyLink(t);
+    $('.tagBtn', li).onclick = () => openTagDialog(t);
+    $('.play', li).onclick = () => playTrack(i);
+    $('.builtin', li).onclick = () => playTrack(i);
     const dl = $('.dl', li);
     if (t.local) {
       dl.onclick = e => { e.preventDefault(); const u = URL.createObjectURL(t.blob); dl.href = u; saveBlob(u, t.file); };
@@ -198,17 +239,116 @@ function render() {
   });
   els.list.appendChild(frag);
   els.empty.hidden = view.length > 0;
+  els.empty.textContent = activeCat && tracks.length
+    ? `No songs in “${activeCat}” yet. Tap 🏷 on any song to add it to this category.`
+    : 'No instrumentals yet. Upload some MP3s to get started.';
   const nPub = view.filter(t => !t.local).length, nLoc = view.length - nPub;
-  els.libTitle.textContent = `Library · ${nPub} song${nPub === 1 ? '' : 's'}` +
-    (nLoc ? ` · +${nLoc} only on this device` : '');
+  els.libTitle.textContent = `${activeCat || 'Library'} · ${nPub} song${nPub === 1 ? '' : 's'}` +
+    (nLoc ? ` · +${nLoc} only on this device` : '') + ' · newest first';
   markPlaying();
 }
+
+/* ---------- category bar + dialogs ---------- */
+function renderCats() {
+  const counts = new Map(cats.names.map(n => [n, 0]));
+  tracks.forEach(t => catsOf(t).forEach(c => counts.set(c, counts.get(c) + 1)));
+  const focusedCat = document.activeElement?.closest?.('#cats') ? document.activeElement.dataset.cat : undefined;
+  els.cats.textContent = '';
+  const button = (label, cls, onclick, extra = {}) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip ' + cls; b.textContent = label; b.onclick = onclick;
+    Object.assign(b.dataset, extra);
+    return b;
+  };
+  const chip = (label, value, n) => {
+    const b = button(label, '', () => setActiveCat(value), { cat: value });
+    const s = document.createElement('span'); s.className = 'count'; s.textContent = n;
+    b.append(s);
+    b.setAttribute('aria-pressed', String(activeCat === value));
+    return b;
+  };
+  els.cats.append(chip('All songs', '', tracks.length));
+  cats.names.forEach(n => els.cats.append(chip(n, n, counts.get(n))));
+  els.cats.append(button('+ New category', 'add', () => openCatDialog(), { cat: '+new' }));
+  if (activeCat) {
+    els.cats.append(button('✎ Rename', 'ghost', () => openCatDialog(activeCat), { cat: '+rename' }));
+    els.cats.append(button('🗑 Delete', 'ghost', () => {
+      if (confirm(`Delete the category “${activeCat}”? The songs stay in your library.`)) { deleteCat(activeCat); render(); }
+    }, { cat: '+delete' }));
+  }
+  if (focusedCat !== undefined) {
+    const again = [...els.cats.children].find(b => b.dataset.cat === focusedCat);
+    (again || els.cats.querySelector('[aria-pressed="true"]'))?.focus();
+  }
+}
+
+let catDialogRename = null;
+function openCatDialog(renaming = null) {
+  catDialogRename = renaming;
+  $('#catDialogTitle').textContent = renaming ? `Rename “${renaming}”` : 'New category';
+  els.catName.value = renaming || '';
+  els.catDialog.showModal();
+  els.catName.select();
+}
+els.catDialog.addEventListener('close', () => {
+  if (els.catDialog.returnValue !== 'ok') return;
+  const name = els.catName.value.trim().replace(/\s+/g, ' ');
+  if (!name) return;
+  if (catDialogRename) {
+    const clash = findCat(name);
+    if (clash && clash !== catDialogRename) return say(`There is already a category called “${clash}”.`);
+    renameCat(catDialogRename, name);
+    render();
+    say(`Renamed to “${name}”.`);
+  } else {
+    const existed = findCat(name);
+    const created = addCat(name);
+    setActiveCat(created);
+    say(existed ? `“${created}” already exists — showing it.` : `Category “${created}” created. Tap 🏷 on a song to add it.`, 9000);
+  }
+});
+
+let tagTrack = null;
+function renderTagList() {
+  const mine = catsOf(tagTrack);
+  els.tagList.textContent = '';
+  if (!cats.names.length) {
+    const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'No categories yet — type a name below to create one.';
+    els.tagList.append(p);
+  }
+  cats.names.forEach(n => {
+    const label = document.createElement('label');
+    const box = document.createElement('input');
+    box.type = 'checkbox'; box.value = n; box.checked = mine.includes(n);
+    box.onchange = () => setSongCat(tagTrack, n, box.checked);
+    label.append(box, ' ', n);
+    els.tagList.append(label);
+  });
+}
+function openTagDialog(t) {
+  tagTrack = t;
+  $('#tagSong').textContent = t.title;
+  els.tagNew.value = '';
+  renderTagList();
+  els.tagDialog.showModal();
+}
+function addTagFromInput() {
+  const name = addCat(els.tagNew.value);
+  if (!name) return els.tagNew.focus();
+  setSongCat(tagTrack, name, true);
+  els.tagNew.value = '';
+  renderTagList();
+  els.tagNew.focus();
+}
+$('#tagAdd').onclick = addTagFromInput;
+els.tagNew.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addTagFromInput(); } });
+els.tagDialog.addEventListener('close', () => { tagTrack = null; render(); });
 function saveBlob(u, name) {
   const a = document.createElement('a'); a.href = u; a.download = name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
 }
 els.search.addEventListener('input', render);
-$('#vlcAllBtn').onclick = playAllInVLC;
+$('#playAllBtn').onclick = playAll;
 
 /* ---------- loading the published library ---------- */
 function githubRepo() {
@@ -236,7 +376,8 @@ async function loadPublished() {
   }
   return items
     .filter(x => /\.mp3$/i.test(x.file))
-    .map(x => ({ id: 'p:' + x.file, file: x.file, title: prettify(x.file), size: x.size, url: absUrl(x.file), local: false }));
+    .map(x => ({ id: 'p:' + x.file, file: x.file, title: prettify(x.file), size: x.size, url: absUrl(x.file),
+                 added: x.added ? x.added * 1000 : 0, local: false }));   // tracks.json "added" is in seconds
 }
 
 /* ---------- uploads (stored on this device with IndexedDB) ---------- */
@@ -287,7 +428,8 @@ async function removeLocal(t) {
 }
 async function loadLocal() {
   try {
-    return (await DB.all()).map(x => ({ id: x.id, file: x.file, title: prettify(x.file), size: x.size, blob: x.blob, local: true }));
+    return (await DB.all()).map(x => ({ id: x.id, file: x.file, title: prettify(x.file), size: x.size, blob: x.blob,
+                                        added: x.added || 0, local: true }));
   } catch { return []; }
 }
 els.fileInput.onchange = () => { addFiles([...els.fileInput.files]); els.fileInput.value = ''; };
@@ -311,41 +453,65 @@ async function refresh(onlyIfChanged = false) {
   const pubNames = new Set(pub.map(t => t.file.toLowerCase()));
   const loc = pub.length ? allLoc.filter(t => !pubNames.has(t.file.toLowerCase())) : allLoc;
   if (pub.length) allLoc.filter(t => pubNames.has(t.file.toLowerCase())).forEach(t => DB.del(t.id).catch(() => {}));
-  const byTitle = (a, b) => a.title.localeCompare(b.title);
-  const next = [...pub.sort(byTitle), ...loc.sort(byTitle)];   // device-only songs listed last
+  const next = [...pub.sort(newestFirst), ...loc.sort(newestFirst)];   // newest first; device-only songs listed last
   const key = list => list.map(t => t.id).join('|');
   if (onlyIfChanged && (key(next) === key(tracks) || (!pub.length && tracks.some(t => !t.local)))) return;
   tracks = next;
   render();
 }
 
-/* ---------- settings ---------- */
-$('#settingsBtn').onclick = () => {
-  els.settings.querySelector(`input[value="${defaultPlayer}"]`).checked = true;
-  els.settings.showModal();
-};
-els.settings.addEventListener('change', e => {
-  if (e.target.name === 'player') { defaultPlayer = e.target.value; store.set('djs.player', defaultPlayer); }
-});
-
 /* ---------- TV remote / keyboard (D-pad) navigation ---------- */
 addEventListener('keydown', e => {
-  if (els.settings.open) return;
+  if (document.querySelector('dialog[open]')) return;
   const row = document.activeElement?.closest?.('.row');
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+  const inCats = !!document.activeElement?.closest?.('#cats');
+  const inPlayer = !!document.activeElement?.closest?.('#player');
+  const playerOpen = !els.player.hidden;
+  const activeChip = () => els.cats.querySelector('[aria-pressed="true"]') || els.cats.firstElementChild;
+  const rows = () => [...els.list.querySelectorAll('.row')];
+  // Remote / keyboard media keys work from anywhere
+  const k = e.key;
+  if (k === 'MediaPlayPause' || k === 'MediaPlay' || k === 'MediaPause') { togglePlay(); e.preventDefault(); return; }
+  if (k === 'MediaStop') { stopPlayer(); e.preventDefault(); return; }
+  if (k === 'MediaTrackNext' && playerOpen) { $('#nextBtn').click(); e.preventDefault(); return; }
+  if (k === 'MediaTrackPrevious' && playerOpen) { $('#prevBtn').click(); e.preventDefault(); return; }
+  // Back on TV browsers / Esc on a keyboard closes the player
+  if ((k === 'Escape' || k === 'GoBack' || k === 'BrowserBack' || e.keyCode === 461 || e.keyCode === 10009) && playerOpen) {
+    if (document.activeElement !== els.search) { stopPlayer(); e.preventDefault(); return; }
+  }
+  if (inPlayer) {
+    const btns = [...els.player.querySelectorAll('button')];
+    const i = btns.indexOf(document.activeElement);
+    if (k === 'ArrowRight' || k === 'ArrowLeft') {
+      const next = btns[i + (k === 'ArrowRight' ? 1 : -1)];
+      if (next) next.focus();
+      e.preventDefault();
+    } else if (k === 'ArrowUp') {
+      const r = els.list.querySelector('.row.playing') || rows().at(-1);
+      if (r) { $('.play', r).focus(); r.scrollIntoView({ block: 'nearest' }); }
+      e.preventDefault();
+    } else if (k === 'ArrowDown') e.preventDefault();
+    return;
+  }
+  if (inCats && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    const sib = e.key === 'ArrowRight' ? document.activeElement.nextElementSibling : document.activeElement.previousElementSibling;
+    if (sib) { sib.focus(); e.preventDefault(); }
+  } else if (row && e.key === 'ArrowDown' && playerOpen && row === rows().at(-1)) {
+    els.playPause.focus(); e.preventDefault();      // past the last song → the player controls
+  } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     if (document.activeElement === els.search && e.key === 'ArrowUp') return;
-    const rows = [...els.list.querySelectorAll('.row')];
-    if (!rows.length) return;
-    let i = row ? rows.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1) : 0;
-    if (i < 0) { els.search.focus(); e.preventDefault(); return; }
-    i = Math.min(i, rows.length - 1);
-    $('.play', rows[i]).focus(); rows[i].scrollIntoView({ block: 'nearest' }); e.preventDefault();
+    if (document.activeElement === els.search && e.key === 'ArrowDown') { activeChip()?.focus(); e.preventDefault(); return; }
+    if (inCats && e.key === 'ArrowUp') { els.search.focus(); e.preventDefault(); return; }
+    const all = rows();
+    if (!all.length) return;
+    let i = row ? all.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1) : 0;
+    if (i < 0) { activeChip()?.focus(); e.preventDefault(); return; }
+    i = Math.min(i, all.length - 1);
+    $('.play', all[i]).focus(); all[i].scrollIntoView({ block: 'nearest' }); e.preventDefault();
   } else if (row && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
     const btns = [...row.querySelectorAll('button:not([hidden]), a')];
     const i = btns.indexOf(document.activeElement) + (e.key === 'ArrowRight' ? 1 : -1);
     if (btns[i]) { btns[i].focus(); e.preventDefault(); }
-  } else if (e.key === 'MediaPlayPause') {
-    els.audio.paused ? els.audio.play() : els.audio.pause();
   }
 });
 

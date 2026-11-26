@@ -1,7 +1,7 @@
 {
   "name": "DJSinatra",
   "short_name": "DJSinatra",
-  "description": "Instrumental MP3 player that streams to VLC on TV, PC, tablet and phone.",
+  "description": "Instrumental MP3 player for TV, PC, tablet and phone.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
