@@ -484,9 +484,11 @@ async function refresh(onlyIfChanged = false) {
   if (pub.length) allLoc.filter(t => pubNames.has(t.file.toLowerCase())).forEach(t => DB.del(t.id).catch(() => {}));
   const next = [...pub.sort(newestFirst), ...loc.sort(newestFirst)];   // newest first; device-only songs listed last
   const key = list => list.map(t => t.id).join('|');
-  if (onlyIfChanged && (key(next) === key(tracks) || (!pub.length && tracks.some(t => !t.local)))) return;
+  const reached = pub.length > 0;   // false = couldn't load the song list (offline?)
+  if (onlyIfChanged && (key(next) === key(tracks) || (!reached && tracks.some(t => !t.local)))) return reached;
   tracks = next;
   render();
+  return reached;
 }
 
 /* ---------- TV remote / keyboard (D-pad) navigation ---------- */
@@ -536,6 +538,21 @@ addEventListener('keydown', e => {
     } else if (k === 'ArrowDown') e.preventDefault();
     return;
   }
+  // Toolbar row (▶ Play all, ⟳ Refresh, ⤒ Upload…) sits between the search box and the categories.
+  const toolbarBtns = () => [...document.querySelectorAll('.toolbar-btns > button, .toolbar-btns > label, .toolbar-btns > a')]
+    .filter(b => !b.hidden && !b.disabled && b.offsetParent !== null);
+  const inToolbar = !!document.activeElement?.closest?.('.toolbar-btns');
+  if (inToolbar) {
+    const btns = toolbarBtns(), i = btns.indexOf(document.activeElement);
+    if (k === 'ArrowRight' || k === 'ArrowLeft') btns[i + (k === 'ArrowRight' ? 1 : -1)]?.focus();
+    else if (k === 'ArrowUp') els.search.focus();
+    else if (k === 'ArrowDown') activeChip()?.focus();
+    else return;
+    e.preventDefault();
+    return;
+  }
+  if (document.activeElement === els.search && k === 'ArrowDown') { toolbarBtns()[0]?.focus(); e.preventDefault(); return; }
+  if (inCats && k === 'ArrowUp') { (toolbarBtns()[0] || els.search).focus(); e.preventDefault(); return; }
   if (inCats && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
     const sib = e.key === 'ArrowRight' ? document.activeElement.nextElementSibling : document.activeElement.previousElementSibling;
     if (sib) { sib.focus(); e.preventDefault(); }
@@ -594,6 +611,30 @@ async function autoRefresh() {
     if (added) say(`🎵 ${added} new song${added > 1 ? 's' : ''} added!`, 8000);
   } finally { refreshing = false; }
 }
+/* ⟳ Refresh button: check for new songs right now. */
+const refreshBtn = $('#refreshBtn');
+refreshBtn.onclick = async () => {
+  if (refreshing) return;
+  refreshing = true;
+  refreshBtn.disabled = true;
+  refreshBtn.textContent = '⟳ Checking…';
+  say('Checking for new songs…', 0);
+  try {
+    const before = new Set(tracks.map(t => t.id));
+    if (!(await refresh(true))) throw new Error('offline');
+    lastRefresh = Date.now();
+    const added = tracks.filter(t => !before.has(t.id)).length;
+    const n = tracks.filter(t => !t.local).length;
+    say(added ? `🎵 ${added} new song${added > 1 ? 's' : ''} added!` : `✓ Up to date — ${n} songs.`, 6000);
+  } catch {
+    say('Couldn’t check for new songs — check the internet connection.', 8000);
+  } finally {
+    refreshing = false;
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = '⟳ Refresh';
+    refreshBtn.focus();
+  }
+};
 document.addEventListener('visibilitychange', autoRefresh);
 addEventListener('focus', autoRefresh);
 addEventListener('pageshow', autoRefresh);
