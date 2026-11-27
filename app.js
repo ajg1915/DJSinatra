@@ -201,6 +201,13 @@ if ('mediaSession' in navigator) {
 function render() {
   const q = els.search.value.trim().toLowerCase();
   const playingId = view[current]?.id;
+  // Remember which song button the remote/keyboard is on, so a redraw doesn't lose it.
+  const focusRow = document.activeElement?.closest?.('#list .row');
+  const keepFocus = focusRow && {
+    id: focusRow.dataset.id,
+    cls: [...document.activeElement.classList].find(c => ['play', 'builtin', 'tagBtn', 'dl', 'del'].includes(c)),
+    top: focusRow.getBoundingClientRect().top,
+  };
   renderCats();
   view = tracks.filter(t =>
     (!q || t.title.toLowerCase().includes(q) || t.file.toLowerCase().includes(q)) &&
@@ -238,6 +245,14 @@ function render() {
     frag.appendChild(li);
   });
   els.list.appendChild(frag);
+  if (keepFocus) {
+    const r = [...els.list.querySelectorAll('.row')].find(x => x.dataset.id === keepFocus.id);
+    const target = r && (r.querySelector('.' + keepFocus.cls) || r.querySelector('.play'));
+    if (target) {
+      target.focus({ preventScroll: true });
+      scrollBy(0, r.getBoundingClientRect().top - keepFocus.top);   // keep it in the same spot on screen
+    }
+  }
   els.empty.hidden = view.length > 0;
   els.empty.textContent = activeCat && tracks.length
     ? `No songs in “${activeCat}” yet. Tap 🏷 on any song to add it to this category.`
@@ -563,17 +578,23 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 refresh();
 
 /* ---------- auto-update the song list ----------
- * New songs pushed to GitHub show up on their own: when you come back to the app,
- * and every 5 minutes while it is open. No reinstall needed. */
-let lastRefresh = Date.now();
+ * New songs pushed to GitHub show up on their own, no restart needed: the list is checked
+ * every 20 seconds while the app is open, and right away when you come back to it.
+ * Cheap: the browser re-downloads tracks.json only when it has changed (ETag). */
+let lastRefresh = Date.now(), refreshing = false;
 async function autoRefresh() {
-  if (document.hidden || Date.now() - lastRefresh < 60000) return;
+  if (document.hidden || refreshing || Date.now() - lastRefresh < 10000) return;
+  if (document.querySelector('dialog[open]')) return;   // don't redraw under an open pop-up
+  refreshing = true;
   lastRefresh = Date.now();
-  const before = new Set(tracks.map(t => t.id));
-  await refresh(true);
-  const added = tracks.filter(t => !before.has(t.id)).length;
-  if (added) say(`🎵 ${added} new song${added > 1 ? 's' : ''} added!`, 8000);
+  try {
+    const before = new Set(tracks.map(t => t.id));
+    await refresh(true);
+    const added = tracks.filter(t => !before.has(t.id)).length;
+    if (added) say(`🎵 ${added} new song${added > 1 ? 's' : ''} added!`, 8000);
+  } finally { refreshing = false; }
 }
 document.addEventListener('visibilitychange', autoRefresh);
 addEventListener('focus', autoRefresh);
-setInterval(autoRefresh, 5 * 60000);
+addEventListener('pageshow', autoRefresh);
+setInterval(autoRefresh, 20000);
