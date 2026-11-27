@@ -24,13 +24,21 @@ function Notify($title, $text) {
   $tray.BalloonTipTitle = $title; $tray.BalloonTipText = $text
   $tray.ShowBalloonTip(8000)
 }
-function Log($msg) { Add-Content -LiteralPath $log -Value "$(Get-Date -Format s)  $msg" -Encoding UTF8 }
+function Log($msg) { try { Add-Content -LiteralPath $log -Value "$(Get-Date -Format s)  $msg" -Encoding UTF8 -ErrorAction Stop } catch {} }
+
+# What's in the songs folder right now (names + sizes). Compared every couple of minutes as a
+# safety net: Windows' file-change events can be missed, e.g. after the PC wakes from sleep.
+function Get-Snapshot {
+  (Get-ChildItem -LiteralPath $source -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match $audio } | Sort-Object Name |
+    ForEach-Object { "$($_.Name)|$($_.Length)" }) -join "`n"
+}
 
 function Run-Sync {
   Log 'sync started'
   $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $sync -Yes *>&1 | Out-String
   $ok = $LASTEXITCODE -eq 0
-  Add-Content -LiteralPath $log -Value $out -Encoding UTF8
+  try { Add-Content -LiteralPath $log -Value $out -Encoding UTF8 -ErrorAction Stop } catch {}
   $added   = ([regex]::Matches($out, '\+ added')).Count
   $removed = ([regex]::Matches($out, '- removed')).Count
   if (-not $ok) {
@@ -40,9 +48,11 @@ function Run-Sync {
     Notify 'DJSinatra songs uploaded' ("$($parts -join ', '). Your TV, phone and PC update in about a minute.")
   }
   Log "sync finished ok=$ok added=$added removed=$removed"
+  $script:lastSnap = Get-Snapshot
 }
 
 $audio = '\.(mp3|wav|m4a|mp4|flac|aac|ogg|wma)$'
+$lastSnap = ''; $lastCheck = Get-Date
 $watcher = New-Object IO.FileSystemWatcher $source
 $watcher.IncludeSubdirectories = $false
 $watcher.NotifyFilter = [IO.NotifyFilters]'FileName, Size, LastWrite'
@@ -63,6 +73,11 @@ try {
       Remove-Event -EventIdentifier $e.EventIdentifier
       if ($name -match $audio) { $pending = $true; $lastChange = Get-Date }
       continue
+    }
+    # safety net: every 2 minutes, notice changes even if no file event arrived
+    if (-not $pending -and ((Get-Date) - $lastCheck).TotalSeconds -ge 120) {
+      $lastCheck = Get-Date
+      if ((Get-Snapshot) -ne $lastSnap) { $pending = $true; $lastChange = Get-Date; Log 'change found by folder check' }
     }
     # wait until files have stopped changing (big copies / downloads) before syncing
     if ($pending -and ((Get-Date) - $lastChange).TotalSeconds -ge $QuietSeconds) {

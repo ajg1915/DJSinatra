@@ -4,5 +4,7 @@ $procs = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where
 $log = Join-Path $env:LOCALAPPDATA 'DJSinatra\auto-sync.log'
 Write-Host "Starts at sign-in : $(Test-Path -LiteralPath $lnk)"
 Write-Host "Running now       : $($procs.Count -gt 0) $(($procs | ForEach-Object ProcessId) -join ',')"
+$task = Get-ScheduledTask -TaskName 'DJSinatra Auto Sync Keep-Alive' -ErrorAction SilentlyContinue
+Write-Host "Restarts if stopped: $([bool]$task)$(if ($task) { " (checks every 10 min)" })"
 Write-Host "Last log lines:"
 if (Test-Path $log) { Get-Content $log -Tail 4 | ForEach-Object { Write-Host "  $_" } } else { Write-Host "  (no log yet)" }
